@@ -1,0 +1,236 @@
+<head>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght,MONO@0,300..800,1;1,300..800,1&display=swap');</style>
+    <style>
+        * {
+            font-family: "Google Sans Code", monospace;
+            font-optical-sizing: auto;
+            margin: 0;
+            font-variation-settings:
+                "MONO" 1;
+        }
+        #items {
+            margin: 20px;
+        }
+        h1 {
+            font-weight: 800;
+            font-size: 50px;
+            font-style: normal;
+            margin-bottom: 25px;
+        }
+        h3 {
+            font-weight: 500;
+            font-style: normal;
+        }
+        h4 {
+            font-weight: 500;
+            font-style: normal;
+        }
+        .floating {
+            background-color: grey;
+            flex-direction: row;
+            position: sticky;
+            color: gray;
+            display: flex;
+            z-index: 9999;
+            width: 100vw;
+            height: 8vh;
+            right: 0px;
+            top: 0px;
+        }
+        .menubtn {
+            background-color: gray;
+            height: 8vh;
+            border: 0;
+        }
+        .menubtn:hover {
+            background-color: darkgray;
+        }
+        .divide {
+            background-color: black;
+            height: 8vh;
+            width: 1px;
+            border: 0;
+        }
+        html, body {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+        .popup {
+            background-color: gray;
+            position: fixed;
+            z-index: 9999;
+            height: 70vh;
+            width: 85vw;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .closebtn {
+            border: 0;
+            background-color: rgb(170, 170, 170);
+            color: white;
+            height: 2vw;
+            width: 2vw;
+            position: static;
+            left: 0;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <script src="jswasm/sqlite3.js"></script>
+    <script>
+        //bagel("KOReader", "KOReader Team", "Kindlemodding repo", "An ebook reader application supporting PDF, DjVu, EPUB, FB2 and many more formats, running on Cervantes, Kindle, Kobo, PocketBook and Android devices.", "koreader")
+        let curfile;
+        let sqlite3;
+        let db;
+        let ldb = 0;
+        self.sqlite3InitModule().then((sqlite) => {sqlite3 = sqlite});
+
+        const bagel = function(title, creator, repo, desc, pkg) {
+            let divv = document.createElement('div');
+            divv.id = pkg;
+            let item = document.createElement('h1');
+            item.id = "title"; item.innerText = title; divv.append(item);
+            item = document.createElement('h3');
+            item.id = "creator"; item.innerText = creator; divv.append(item);
+            item = document.createElement('h4');
+            item.id = "repo"; item.innerText = repo; divv.append(item);
+            item = document.createElement('br'); divv.append(item);
+            item = document.createElement('p');
+            item.id = "desc"; item.innerText = desc; divv.append(item);
+            item = document.createElement('br'); divv.append(item);
+            item = document.createElement('p');
+            item.id = "package"; item.innerText = "package ID: " + pkg; divv.append(item);
+            item = document.createElement('br'); divv.append(item);
+            document.getElementById('items').append(divv);
+
+        };
+        const openf = async function() {
+            const [fdesc] = await window.showOpenFilePicker({ 
+                types: [{ 
+                    description: 'SQL Database', 
+                    accept: { 'application/x-sqlite3': ['.db'] } 
+                }] 
+            }); 
+            let file = await fdesc.getFile()
+            let buffer = await file.arrayBuffer();
+            return buffer;
+        }; 
+        const creatr = async function() {
+            curfile = await openf();
+            makef(curfile)
+            showf();
+        }
+        const makef = function(buffer) {
+            let bytes = new Uint8Array(buffer);
+            let p = sqlite3.wasm.allocFromTypedArray(bytes);
+            db = new sqlite3.oo1.DB();
+            ldb = 1;
+            sqlite3.capi.sqlite3_deserialize(
+                db.pointer, 'main', p, buffer.byteLength, 
+                buffer.byteLength, sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE
+            );
+        }
+        const getext = async function(f) {
+            let textt = await fetch(f);
+            let texttt = await textt.text();
+            return texttt;
+        };
+        const sources = function(add=[], rm=[], fetch=-1, show=0) {
+            if (!ldb) {console.log("no imported file!"); return 0};
+            if (add.length > 0) {
+                add.forEach(item => {
+                    db.exec({
+                        sql: `INSERT INTO repositories (id, url, name, description) VALUES (?,?,?,?);`,
+                        bind: [item[0], item[1], item[2], item[3]]
+                    });
+                });
+            };
+            if (rm.length > 0) {
+                rm.forEach(item => {
+                    db.exec({
+                        sql: `DELETE FROM repositories WHERE id=?`,
+                        bind: [item]
+                    });
+                });
+            };
+            if (fetch > -1) {
+                const rows = db.selectObjects("SELECT * FROM repositories");
+                console.log(rows);
+                let jsonstring = gettext(rows[0][url]);
+                let jsonobject = JSON.parse(jsonString);
+                let entrynames = Object.keys(jsonobject);
+                return [entrynames, jsonobject]
+            };
+        };
+        const showf = function() {
+            document.getElementById("items").innerHTML = "";
+            if (!ldb) {console.log("no imported file!"); return 0};
+
+            console.log(db.selectValues("SELECT name FROM sqlite_schema WHERE type='table'"));
+            console.log(db.selectObjects("SELECT * FROM repositories"));
+
+            const rows = db.selectObjects("SELECT * FROM packages");
+            rows.forEach((row) => {
+                bagel(row.name, row.author, row.repository, row.description, row.id); console.log(`Author: ${row.author}, Name: ${row.name}`); 
+            });
+        };
+
+        const exp = function() {
+            if (!ldb) {console.log("no imported file!"); return 0};
+            sqlite3.capi.sqlite3_exec(db, "VACUUM;", null, null, null);
+            let byteArray = sqlite3.capi.sqlite3_js_db_export(db, 'main');
+
+            db.close()
+            ldb = 0;
+
+            if (!byteArray || !(byteArray instanceof Uint8Array)) {throw new Error("Database export failed due to memory limitations.")};
+            console.log(`Successfully exported database! Size: ${byteArray.length} bytes`);
+            console.log(byteArray);
+            window.localStorage.setItem("db", byteArray.toBase64());
+            savef(byteArray)
+            showf();
+        };
+        const load = function() {
+            if (window.localStorage.getItem("db") !== null) {
+                let bufarray = Uint8Array.fromBase64(window.localStorage.getItem("db"));
+                console.log(bufarray);
+                makef(bufarray);
+                showf();
+            };
+        }
+        async function savef(textContent) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'kpm.db',
+                    types: [{
+                        description: 'SQLite database',
+                        accept: {'application/vnd.sqlite3': ['.db'],},
+                    }],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(textContent);
+                await writable.close();
+
+            } catch (err) {console.error("error:", err);}
+        }
+    </script>
+    <div class="floating">
+        <button class="menubtn" onclick="creatr()">upload .db file</button>
+        <section class="divide"></section>
+        <button class="menubtn" onclick="showf()">refresh</button>
+        <section class="divide"></section>
+        <button class="menubtn" onclick="load()">Restore session</button>
+        <section class="divide"></section>
+        <button class="menubtn" onclick="exp()">Export / Close</button>
+        <section class="divide"></section>
+    </div>
+    
+    <div id="items"></div>
+    <div class="popup hidden" id="popup">
+        <button class="closebtn" onclick="document.getElementById('popup').classList.add('hidden');">X</button>
+    </div>
+</body>
